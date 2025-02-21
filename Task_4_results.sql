@@ -34,7 +34,7 @@ SELECT Movies.Code, Movies.Title, Movies.Rating, MovieTheaters.Code AS TheaterCo
 FROM Movies
 JOIN MovieTheaters ON Movies.Code = MovieTheaters.Movie;
 
-SELECT * From Movies_view
+-- SELECT * From Movies_view
 
 
 --Questions
