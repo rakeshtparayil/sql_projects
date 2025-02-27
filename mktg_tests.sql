@@ -156,3 +156,112 @@ WITH channel_metrics AS (
 )
 SELECT * FROM channel_metrics
 ORDER BY roi DESC;
+
+-- Windows Functions for Marketing Analytics
+
+-- Example 1: Ranking campaigns by conversion rate
+SELECT 
+    campaign_id,
+    campaign_name,
+    channel,
+    SUM(conversions) AS total_conversions,
+    SUM(clicks) AS total_clicks,
+    (SUM(conversions) * 100.0 / SUM(clicks)) AS conversion_rate,
+    RANK() OVER (ORDER BY (SUM(conversions) * 100.0 / SUM(clicks)) DESC) AS conversion_rate_rank
+FROM marketing_campaigns c
+JOIN marketing_metrics m ON c.campaign_id = m.campaign_id
+GROUP BY campaign_id, campaign_name, channel
+ORDER BY conversion_rate_rank;
+
+-- Example 2: Running total of campaign spend over time
+SELECT 
+    c.campaign_id,
+    c.campaign_name,
+    m.date,
+    m.cost AS daily_cost,
+    SUM(m.cost) OVER (
+        PARTITION BY c.campaign_id 
+        ORDER BY m.date
+        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS cumulative_cost,
+    c.budget AS total_budget,
+    (SUM(m.cost) OVER (
+        PARTITION BY c.campaign_id 
+        ORDER BY m.date
+        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) / c.budget * 100) AS budget_used_percentage
+FROM marketing_campaigns c
+JOIN marketing_metrics m ON c.campaign_id = m.campaign_id
+ORDER BY c.campaign_id, m.date;
+
+-- Example 3: Moving average of conversions (3-point)
+SELECT 
+    c.campaign_id,
+    c.campaign_name,
+    m.date,
+    m.conversions,
+    AVG(m.conversions) OVER (
+        PARTITION BY c.campaign_id 
+        ORDER BY m.date
+        ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING
+    ) AS three_point_avg_conversions
+FROM marketing_campaigns c
+JOIN marketing_metrics m ON c.campaign_id = m.campaign_id
+ORDER BY c.campaign_id, m.date;
+
+-- Example 4: Comparing each campaign's performance to channel average
+WITH channel_averages AS (
+    SELECT 
+        c.channel,
+        AVG(m.clicks) AS avg_channel_clicks,
+        AVG(m.conversions) AS avg_channel_conversions,
+        AVG(m.revenue) AS avg_channel_revenue
+    FROM marketing_campaigns c
+    JOIN marketing_metrics m ON c.campaign_id = m.campaign_id
+    GROUP BY c.channel
+)
+SELECT 
+    c.campaign_id,
+    c.campaign_name,
+    c.channel,
+    SUM(m.clicks) AS total_clicks,
+    SUM(m.conversions) AS total_conversions,
+    SUM(m.revenue) AS total_revenue,
+    ca.avg_channel_clicks,
+    ca.avg_channel_conversions,
+    ca.avg_channel_revenue,
+    (SUM(m.clicks) - ca.avg_channel_clicks) / ca.avg_channel_clicks * 100 AS clicks_vs_channel_avg_pct,
+    (SUM(m.conversions) - ca.avg_channel_conversions) / ca.avg_channel_conversions * 100 AS conversions_vs_channel_avg_pct,
+    (SUM(m.revenue) - ca.avg_channel_revenue) / ca.avg_channel_revenue * 100 AS revenue_vs_channel_avg_pct
+FROM marketing_campaigns c
+JOIN marketing_metrics m ON c.campaign_id = m.campaign_id
+JOIN channel_averages ca ON c.channel = ca.channel
+GROUP BY c.campaign_id, c.campaign_name, c.channel, ca.avg_channel_clicks, ca.avg_channel_conversions, ca.avg_channel_revenue
+ORDER BY c.channel, revenue_vs_channel_avg_pct DESC;
+
+-- Example 5: Identifying best and worst performing days for each campaign
+SELECT 
+    campaign_id,
+    campaign_name,
+    date,
+    conversions,
+    revenue,
+    FIRST_VALUE(date) OVER (
+        PARTITION BY campaign_id 
+        ORDER BY revenue DESC
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    ) AS best_revenue_date,
+    MAX(revenue) OVER (
+        PARTITION BY campaign_id
+    ) AS best_revenue,
+    FIRST_VALUE(date) OVER (
+        PARTITION BY campaign_id 
+        ORDER BY revenue ASC
+        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+    ) AS worst_revenue_date,
+    MIN(revenue) OVER (
+        PARTITION BY campaign_id
+    ) AS worst_revenue
+FROM marketing_campaigns c
+JOIN marketing_metrics m ON c.campaign_id = m.campaign_id
+ORDER BY campaign_id, date;
